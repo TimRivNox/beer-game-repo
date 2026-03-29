@@ -430,65 +430,28 @@ elif st.session_state.phase == 3:
     # --- Optimizer ---
     st.markdown("### \U0001f916 Run the optimizer")
     st.markdown(
-        "The optimizer evaluates all 56 warehouse combinations, "
-        "uses Clarke-Wright savings routing, 2-opt improvement, "
-        "and border venue reassignment."
+        "The optimizer evaluates all 56 warehouse combinations with smart routing "
+        "and balanced load distribution."
     )
 
-    run_col, result_col = st.columns([1, 2])
-
-    with run_col:
-        if st.button("\U0001f680 Run optimizer", type="primary", use_container_width=True):
-            progress = st.progress(0.0, text="Initializing...")
-            for i in range(20):
-                time.sleep(0.05)
-                progress.progress(i / 40, text="Evaluating warehouse combinations...")
-            for i in range(20, 40):
-                time.sleep(0.03)
-                progress.progress(i / 50, text="Building optimized routes...")
-
-            opt_result = _get_optimizer_result()
-
-            for i in range(40, 50):
-                time.sleep(0.02)
-                progress.progress(0.8 + (i - 40) / 50, text="Applying 2-opt improvements...")
-            progress.progress(1.0, text="Done!")
-            time.sleep(0.3)
-
-            st.session_state.optimizer_result = opt_result
-            st.session_state.show_optimizer = True
-            st.rerun()
+    if st.button("\U0001f680 Run optimizer", type="primary"):
+        progress = st.progress(0.0, text="Evaluating warehouse combinations...")
+        for i in range(25):
+            time.sleep(0.04)
+            progress.progress(i / 50, text="Evaluating warehouse combinations...")
+        for i in range(25, 45):
+            time.sleep(0.03)
+            progress.progress(i / 50, text="Optimizing routes...")
+        progress.progress(1.0, text="Done!")
+        time.sleep(0.3)
+        st.session_state.optimizer_result = _get_optimizer_result()
+        st.session_state.show_optimizer = True
+        st.rerun()
 
     # --- Show optimizer results ---
     if st.session_state.show_optimizer and st.session_state.optimizer_result:
         opt = st.session_state.optimizer_result
         opt_cost = opt["stats"]
-
-        st.markdown("### \u2728 Optimized plan")
-        st.markdown(
-            f"**Optimizer chose:** {', '.join(w['name'] for w in opt['warehouses'])}"
-        )
-
-        cols = st.columns(6)
-        d_wh = opt_cost["warehouse_cost"] - user_cost["warehouse_cost"]
-        d_fuel = opt_cost["fuel_cost"] - user_cost["fuel_cost"]
-        d_dist = opt_cost["total_distance"] - user_cost["total_distance"]
-        d_time = opt_cost["total_time"] - user_cost["total_time"]
-        d_trucks = opt_cost["total_trucks"] - user_cost["total_trucks"]
-        d_total = opt_cost["total_cost"] - user_cost["total_cost"]
-
-        cols[0].metric("Warehouse cost", f"\u20ac{opt_cost['warehouse_cost']:,.0f}/wk",
-                       delta=f"\u20ac{d_wh:+,.0f}", delta_color="inverse")
-        cols[1].metric("Fuel cost", f"\u20ac{opt_cost['fuel_cost']:,.0f}/wk",
-                       delta=f"\u20ac{d_fuel:+,.0f}", delta_color="inverse")
-        cols[2].metric("Total distance", f"{opt_cost['total_distance']:,.0f} km",
-                       delta=f"{d_dist:+,.0f} km", delta_color="inverse")
-        cols[3].metric("Driving time", f"{opt_cost['total_time']:,.1f} hrs",
-                       delta=f"{d_time:+,.1f} hrs", delta_color="inverse")
-        cols[4].metric("Truck routes", f"{opt_cost['total_trucks']}",
-                       delta=f"{d_trucks:+d}", delta_color="inverse")
-        cols[5].metric("\u2b50 Total cost", f"\u20ac{opt_cost['total_cost']:,.0f}/wk",
-                       delta=f"\u20ac{d_total:+,.0f}", delta_color="inverse")
 
         weekly_savings = user_cost["total_cost"] - opt_cost["total_cost"]
         yearly_savings = weekly_savings * 52
@@ -496,9 +459,72 @@ elif st.session_state.phase == 3:
 
         if weekly_savings > 0:
             st.success(
-                f"\U0001f4b0 **Savings: \u20ac{weekly_savings:,.0f}/week "
+                f"\U0001f4b0 **The optimizer saves \u20ac{weekly_savings:,.0f}/week "
                 f"(\u20ac{yearly_savings:,.0f}/year) \u2014 {pct_savings:.0f}% reduction**"
             )
+
+        # --- Side-by-side cost breakdown ---
+        st.markdown("### Cost breakdown")
+
+        col_label, col_user, col_opt, col_diff = st.columns([2, 1.5, 1.5, 1.5])
+        col_label.markdown("**Cost component**")
+        col_user.markdown("**\U0001f4cb Your plan**")
+        col_opt.markdown("**\u2728 Optimized**")
+        col_diff.markdown("**Difference**")
+
+        rows = [
+            ("Warehouse rent", "warehouse_cost", "/wk"),
+            ("Fuel cost", "fuel_cost", "/wk"),
+            ("Total distance", "total_distance", " km"),
+            ("Driving time", "total_time", " hrs"),
+        ]
+        for label, key, unit in rows:
+            col_label, col_user_v, col_opt_v, col_diff_v = st.columns([2, 1.5, 1.5, 1.5])
+            u_val = user_cost[key]
+            o_val = opt_cost[key]
+            diff = o_val - u_val
+            fmt = f",.0f" if key != "total_time" else f",.1f"
+            prefix = "\u20ac" if "cost" in key else ""
+            col_label.markdown(f"**{label}**")
+            col_user_v.markdown(f"{prefix}{u_val:{fmt}}{unit}")
+            col_opt_v.markdown(f"{prefix}{o_val:{fmt}}{unit}")
+            color = "green" if diff < 0 else ("red" if diff > 0 else "gray")
+            col_diff_v.markdown(f":{color}[{prefix}{diff:+{fmt}}{unit}]")
+
+        # Truck routes
+        col_label, col_user_v, col_opt_v, col_diff_v = st.columns([2, 1.5, 1.5, 1.5])
+        col_label.markdown("**Truck routes**")
+        col_user_v.markdown(f"{user_cost['total_trucks']}")
+        col_opt_v.markdown(f"{opt_cost['total_trucks']}")
+        d_trucks = opt_cost['total_trucks'] - user_cost['total_trucks']
+        color = "green" if d_trucks < 0 else ("red" if d_trucks > 0 else "gray")
+        col_diff_v.markdown(f":{color}[{d_trucks:+d}]")
+
+        st.divider()
+
+        # Total cost highlight
+        col_label, col_user_v, col_opt_v, col_diff_v = st.columns([2, 1.5, 1.5, 1.5])
+        col_label.markdown("### \u2b50 Total weekly cost")
+        col_user_v.metric("Your plan", f"\u20ac{user_cost['total_cost']:,.0f}")
+        col_opt_v.metric("Optimized", f"\u20ac{opt_cost['total_cost']:,.0f}")
+        col_diff_v.metric("Saved", f"\u20ac{weekly_savings:,.0f}/wk",
+                          delta=f"\u20ac{yearly_savings:,.0f}/year", delta_color="normal")
+
+        # Warehouse selection comparison
+        st.markdown("---")
+        col_u, col_o = st.columns(2)
+        with col_u:
+            st.markdown("**Your warehouses:**")
+            for wh in selected_whs:
+                assigned = st.session_state.assignments.get(wh["id"], [])
+                demand = sum(v["demand"] for v in assigned)
+                st.markdown(f"- {wh['name']}: {len(assigned)} venues, {demand}p")
+        with col_o:
+            st.markdown(f"**Optimizer warehouses:**")
+            for wh in opt["warehouses"]:
+                assigned = opt["assignments"].get(wh["id"], [])
+                demand = sum(v["demand"] for v in assigned)
+                st.markdown(f"- {wh['name']}: {len(assigned)} venues, {demand}p")
 
         # Maps comparison
         st.divider()

@@ -61,7 +61,7 @@ WAREHOUSES = [
         "name": "Mechelen",
         "lat": 51.03,
         "lon": 4.48,
-        "weekly_cost": 2800,
+        "weekly_cost": 2400,
         "capacity": 180,
     },
     {
@@ -69,7 +69,7 @@ WAREHOUSES = [
         "name": "Ghent",
         "lat": 51.05,
         "lon": 3.72,
-        "weekly_cost": 3200,
+        "weekly_cost": 2600,
         "capacity": 200,
     },
     {
@@ -93,7 +93,7 @@ WAREHOUSES = [
         "name": "Hasselt",
         "lat": 50.93,
         "lon": 5.34,
-        "weekly_cost": 2400,
+        "weekly_cost": 3200,
         "capacity": 140,
     },
     {
@@ -109,7 +109,7 @@ WAREHOUSES = [
         "name": "Turnhout",
         "lat": 51.32,
         "lon": 4.95,
-        "weekly_cost": 2200,
+        "weekly_cost": 3400,
         "capacity": 120,
     },
     {
@@ -117,7 +117,7 @@ WAREHOUSES = [
         "name": "Sint-Niklaas",
         "lat": 51.16,
         "lon": 4.14,
-        "weekly_cost": 2500,
+        "weekly_cost": 2800,
         "capacity": 160,
     },
 ]
