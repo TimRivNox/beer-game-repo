@@ -166,6 +166,11 @@ def get_breweries():
 def get_total_demand():
     return sum(v["demand"] for v in VENUES)
 
+@st.cache_data
+def _get_optimizer_result():
+    """Run optimizer once and cache — result is deterministic."""
+    return optimize(VENUES, WAREHOUSES)
+
 
 def get_selected_warehouses():
     """Get warehouse dicts for selected IDs."""
@@ -316,35 +321,7 @@ elif st.session_state.phase == 2:
     wh_name_to_id = {wh["name"]: wh["id"] for wh in selected_whs}
     wh_id_to_name = {wh["id"]: wh["name"] for wh in selected_whs}
 
-    # Build venue assignment data for the editor — deduplicate to avoid key conflicts
     assignments = st.session_state.assignments
-    venue_rows = []
-    seen_ids = set()
-    for wh_id, venue_list in assignments.items():
-        for v in venue_list:
-            if v["id"] not in seen_ids:
-                seen_ids.add(v["id"])
-                venue_rows.append({
-                    "Venue": v["name"],
-                    "City": v["city"],
-                    "Demand": v["demand"],
-                    "Stock": v["stock"],
-                    "Warehouse": wh_id_to_name[wh_id],
-                    "_venue_id": v["id"],
-                })
-    # Add any venues missing from assignments (safety net)
-    for v in VENUES:
-        if v["id"] not in seen_ids:
-            first_wh = selected_whs[0]
-            venue_rows.append({
-                "Venue": v["name"],
-                "City": v["city"],
-                "Demand": v["demand"],
-                "Stock": v["stock"],
-                "Warehouse": wh_id_to_name[first_wh["id"]],
-                "_venue_id": v["id"],
-            })
-    venue_rows.sort(key=lambda r: r["Venue"])
 
     # Sidebar controls
     with st.sidebar:
@@ -387,43 +364,35 @@ elif st.session_state.phase == 2:
     # Main content
     col_map, col_edit = st.columns([3, 2])
 
+    # Build current venue-to-warehouse mapping for selectboxes
+    venue_to_wh_name = {}
+    for wh_id, venue_list in assignments.items():
+        for v in venue_list:
+            venue_to_wh_name[v["id"]] = wh_id_to_name[wh_id]
+
     with col_edit:
         st.markdown("#### Reassign venues")
-        st.caption("Change the Warehouse column to reassign a venue.")
+        st.caption("Use the dropdowns to move venues between warehouses.")
 
-        import pandas as pd
-        df = pd.DataFrame(venue_rows)
-        display_df = df[["Venue", "City", "Demand", "Stock", "Warehouse"]].copy()
+        wh_names_list = list(wh_name_to_id.keys())
+        new_assignments = {wh["id"]: [] for wh in selected_whs}
+        venue_lookup = {v["id"]: v for v in VENUES}
 
-        edited = st.data_editor(
-            display_df,
-            column_config={
-                "Warehouse": st.column_config.SelectboxColumn(
-                    "Warehouse",
-                    options=list(wh_name_to_id.keys()),
-                    required=True,
-                ),
-                "Demand": st.column_config.NumberColumn("Demand", format="%d pallets"),
-                "Stock": st.column_config.NumberColumn("Stock", format="%d pallets"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            key="venue_editor",
-        )
+        for v in sorted(VENUES, key=lambda x: x["name"]):
+            current_wh_name = venue_to_wh_name.get(v["id"], wh_names_list[0])
+            current_idx = wh_names_list.index(current_wh_name) if current_wh_name in wh_names_list else 0
+            urgency = "\U0001f534 " if v["stock"] < 2 else ""
+            chosen = st.selectbox(
+                f"{urgency}{v['name']} ({v['city']}, {v['demand']}p)",
+                options=wh_names_list,
+                index=current_idx,
+                key=f"venue_assign_{v['id']}",
+            )
+            wh_id = wh_name_to_id[chosen]
+            new_assignments[wh_id].append(v)
 
-        # Sync edits back to assignments (deduplicate by venue ID)
-        if edited is not None:
-            new_assignments = {wh["id"]: [] for wh in selected_whs}
-            venue_lookup = {v["name"]: v for v in VENUES}
-            assigned_ids = set()
-            for _, row in edited.iterrows():
-                venue = venue_lookup.get(row["Venue"])
-                wh_id = wh_name_to_id.get(row["Warehouse"])
-                if venue and wh_id and venue["id"] not in assigned_ids:
-                    assigned_ids.add(venue["id"])
-                    new_assignments[wh_id].append(venue)
-            st.session_state.assignments = new_assignments
-            assignments = new_assignments
+        st.session_state.assignments = new_assignments
+        assignments = new_assignments
 
     with col_map:
         routes_preview = build_routes_nearest_neighbor(assignments, selected_whs)
@@ -470,20 +439,20 @@ elif st.session_state.phase == 3:
 
     with run_col:
         if st.button("\U0001f680 Run optimizer", type="primary", use_container_width=True):
-            progress = st.progress(0, text="Initializing...")
+            progress = st.progress(0.0, text="Initializing...")
             for i in range(20):
                 time.sleep(0.05)
-                progress.progress(i * 5, text="Evaluating warehouse combinations...")
+                progress.progress(i / 40, text="Evaluating warehouse combinations...")
             for i in range(20, 40):
                 time.sleep(0.03)
-                progress.progress(i * 2.5, text="Building optimized routes...")
+                progress.progress(i / 50, text="Building optimized routes...")
 
-            opt_result = optimize(VENUES, WAREHOUSES)
+            opt_result = _get_optimizer_result()
 
             for i in range(40, 50):
                 time.sleep(0.02)
-                progress.progress(80 + i - 40, text="Applying 2-opt improvements...")
-            progress.progress(100, text="Done!")
+                progress.progress(0.8 + (i - 40) / 50, text="Applying 2-opt improvements...")
+            progress.progress(1.0, text="Done!")
             time.sleep(0.3)
 
             st.session_state.optimizer_result = opt_result
