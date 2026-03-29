@@ -310,17 +310,32 @@ elif st.session_state.phase == 2:
     wh_name_to_id = {wh["name"]: wh["id"] for wh in selected_whs}
     wh_id_to_name = {wh["id"]: wh["name"] for wh in selected_whs}
 
-    # Build venue assignment data for the editor
+    # Build venue assignment data for the editor — deduplicate to avoid key conflicts
     assignments = st.session_state.assignments
     venue_rows = []
+    seen_ids = set()
     for wh_id, venue_list in assignments.items():
         for v in venue_list:
+            if v["id"] not in seen_ids:
+                seen_ids.add(v["id"])
+                venue_rows.append({
+                    "Venue": v["name"],
+                    "City": v["city"],
+                    "Demand": v["demand"],
+                    "Stock": v["stock"],
+                    "Warehouse": wh_id_to_name[wh_id],
+                    "_venue_id": v["id"],
+                })
+    # Add any venues missing from assignments (safety net)
+    for v in VENUES:
+        if v["id"] not in seen_ids:
+            first_wh = selected_whs[0]
             venue_rows.append({
                 "Venue": v["name"],
                 "City": v["city"],
                 "Demand": v["demand"],
                 "Stock": v["stock"],
-                "Warehouse": wh_id_to_name[wh_id],
+                "Warehouse": wh_id_to_name[first_wh["id"]],
                 "_venue_id": v["id"],
             })
     venue_rows.sort(key=lambda r: r["Venue"])
@@ -390,14 +405,16 @@ elif st.session_state.phase == 2:
             key="venue_editor",
         )
 
-        # Sync edits back to assignments
+        # Sync edits back to assignments (deduplicate by venue ID)
         if edited is not None:
             new_assignments = {wh["id"]: [] for wh in selected_whs}
             venue_lookup = {v["name"]: v for v in VENUES}
+            assigned_ids = set()
             for _, row in edited.iterrows():
                 venue = venue_lookup.get(row["Venue"])
                 wh_id = wh_name_to_id.get(row["Warehouse"])
-                if venue and wh_id:
+                if venue and wh_id and venue["id"] not in assigned_ids:
+                    assigned_ids.add(venue["id"])
                     new_assignments[wh_id].append(venue)
             st.session_state.assignments = new_assignments
             assignments = new_assignments
