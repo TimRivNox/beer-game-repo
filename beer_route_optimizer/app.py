@@ -30,7 +30,7 @@ from beer_route_optimizer.scoring import (
 )
 from beer_route_optimizer.optimizer import optimize
 from beer_route_optimizer.map_builder import (
-    build_phase1_map,
+    build_phase1_map_strategic,
     build_phase2_map_with_routes,
     build_phase3_map,
     _make_warehouse_colors,
@@ -179,7 +179,7 @@ def get_selected_warehouses():
 
 def render_phase_indicator(current_phase):
     """Render the 3-step phase progress indicator."""
-    labels = ["1. Place Warehouses", "2. Plan Routes", "3. Results"]
+    labels = ["1. Strategic Planning", "2. This Week's Routes", "3. Results"]
     parts = []
     for i, label in enumerate(labels):
         phase_num = i + 1
@@ -227,14 +227,24 @@ render_phase_indicator(st.session_state.phase)
 
 
 # ============================================================
-# PHASE 1: Warehouse Placement
+# PHASE 1: Strategic Warehouse Placement
 # ============================================================
 if st.session_state.phase == 1:
-    st.markdown("## \U0001f3ed Place your warehouses")
+    st.markdown("## \U0001f3ed Strategic warehouse placement")
     st.markdown(
-        f"Choose **3 warehouse locations** from 8 candidates to serve {len(VENUES)} venues "
-        f"with a total weekly demand of **{get_total_demand()} pallets**."
+        "Choose **3 warehouse locations** to serve Duvel Moortgat's Belgian distribution network. "
+        "The map shows **average weekly demand** across all venues."
     )
+
+    # Compute general metrics per region
+    _region_stats = {}
+    for v in VENUES:
+        city = v["city"]
+        if city not in _region_stats:
+            _region_stats[city] = {"venues": 0, "demand": 0}
+        _region_stats[city]["venues"] += 1
+        _region_stats[city]["demand"] += v["demand"]
+    _avg_demand = get_total_demand() / len(VENUES)
 
     # Sidebar controls
     with st.sidebar:
@@ -291,13 +301,30 @@ if st.session_state.phase == 1:
         elif len(st.session_state.selected_warehouse_ids) < 3:
             st.info(f"Select {3 - len(st.session_state.selected_warehouse_ids)} more warehouse(s).")
 
-    # Main content: map
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        m = build_phase1_map(BREWERIES, VENUES, WAREHOUSES)
+    # Main content: map + general metrics
+    col_map, col_info = st.columns([3, 1])
+    with col_map:
+        m = build_phase1_map_strategic(BREWERIES, VENUES, WAREHOUSES)
         st_folium(m, width=900, height=550, returned_objects=[], key="phase1_map")
-    with col2:
-        render_legend_urgency()
+
+    with col_info:
+        st.markdown("#### Network overview")
+        st.metric("Total venues", f"{len(VENUES)}")
+        st.metric("Avg. weekly demand", f"{get_total_demand()} pallets")
+        st.metric("Avg. per venue", f"{_avg_demand:.1f} pallets/wk")
+        st.markdown("---")
+        st.markdown("**Demand by region:**")
+        for city, stats in sorted(_region_stats.items(), key=lambda x: -x[1]["demand"]):
+            st.markdown(f"- **{city}**: {stats['venues']} venues, {stats['demand']}p/wk")
+        st.markdown("---")
+        st.markdown(
+            '<div>'
+            '<span class="legend-item"><span class="legend-dot" style="background:#1B3A5C"></span> High demand (\u22658p)</span>'
+            '<span class="legend-item"><span class="legend-dot" style="background:#4A7FB5"></span> Medium (5-7p)</span>'
+            '<span class="legend-item"><span class="legend-dot" style="background:#8BB8D9"></span> Low (&lt;5p)</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown("---")
         st.markdown("**Candidate warehouses:**")
         for wh in WAREHOUSES:
@@ -309,11 +336,16 @@ if st.session_state.phase == 1:
 
 
 # ============================================================
-# PHASE 2: Route Planning
+# PHASE 2: This Week's Route Planning
 # ============================================================
 elif st.session_state.phase == 2:
-    st.markdown("## \U0001f69a Plan your routes")
-    st.markdown("Assign venues to warehouses and review routes. Reassign venues if needed.")
+    urgent_count = sum(1 for v in VENUES if v["stock"] < 2)
+    low_count = sum(1 for v in VENUES if 2 <= v["stock"] < 4)
+    st.markdown("## \U0001f69a This week's delivery routes")
+    st.markdown(
+        f"It's Monday morning. **{urgent_count} venues** are critically low on stock and "
+        f"**{low_count} more** are running below target. Plan this week's delivery routes."
+    )
 
     selected_whs = get_selected_warehouses()
     wh_colors = _make_warehouse_colors(selected_whs)

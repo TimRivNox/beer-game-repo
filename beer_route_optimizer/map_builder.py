@@ -158,6 +158,45 @@ def add_routes_with_depot(m, routes_dict, warehouses, warehouse_colors=None):
             ).add_to(m)
 
 
+def add_venues_strategic(m, venues):
+    """Add venue CircleMarkers showing average weekly demand (no urgency/stock info)."""
+    for venue in venues:
+        radius = max(5, venue["demand"] * 1.2 + 2)
+        # Neutral blue color scaled by demand intensity
+        demand = venue["demand"]
+        if demand >= 8:
+            color = "#1B3A5C"  # navy — high demand
+        elif demand >= 5:
+            color = "#4A7FB5"  # medium blue
+        else:
+            color = "#8BB8D9"  # light blue — low demand
+
+        folium.CircleMarker(
+            location=[venue["lat"], venue["lon"]],
+            radius=radius,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.6,
+            popup=folium.Popup(
+                f"<b>{venue['name']}</b><br>"
+                f"City: {venue['city']}<br>"
+                f"Avg. weekly demand: {venue['demand']} pallets",
+                max_width=220,
+            ),
+            tooltip=f"{venue['name']} ({venue['demand']}p/wk)",
+        ).add_to(m)
+
+
+def build_phase1_map_strategic(breweries, venues, candidate_warehouses):
+    """Phase 1 (strategic): Show venues by demand density, breweries, and candidate warehouses."""
+    m = create_base_map()
+    add_breweries(m, breweries)
+    add_warehouses(m, candidate_warehouses, selected_ids=[])
+    add_venues_strategic(m, venues)
+    return m
+
+
 def build_phase1_map(breweries, venues, candidate_warehouses):
     """Phase 1: Show venues (urgency colors), breweries, and all candidate warehouses."""
     m = create_base_map()
