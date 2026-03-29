@@ -4,7 +4,13 @@ Main Streamlit application with 3-phase game flow.
 """
 
 import math
+import os
+import sys
 import time
+
+# Ensure the parent directory is on the path so package imports work
+# when running via `streamlit run beer_route_optimizer/app.py`
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 from streamlit_folium import st_folium
